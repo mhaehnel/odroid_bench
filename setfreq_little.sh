@@ -1,0 +1,1 @@
+setfreq.sh
