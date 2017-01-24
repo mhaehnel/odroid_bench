@@ -1,6 +1,6 @@
 #!/bin/bash
 
-THRESHOLD_TEMP=105
+THRESHOLD_TEMP=110
 
 
 #### End Config ###
@@ -13,8 +13,15 @@ fi
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 CORESCRIPT=$DIR/all_cpus.sh
-[[ $0 =~ _big.sh ]] && CORESCRIPT=$DIR/big_cpus.sh
-[[ $0 =~ _little.sh ]] && CORESCRIPT=$DIR/big_cpus.sh
+if [[ $0 =~ _big.sh ]]; then
+	CORESCRIPT=$DIR/big_cpus.sh
+	PLATFORM=a15
+fi
+if [[ $0 =~ _little.sh ]]; then
+	CORESCRIPT=$DIR/little_cpus.sh
+	PLATFORM=a7
+fi
+
 CORES=$(${CORESCRIPT} | grep -o '[0-9]*$' | paste -s -d, -)
 OTHER=$(comm <($DIR/all_cpus.sh | sort) <($CORESCRIPT | sort) -3 | grep -o '[0-9]*$' | paste -s -d, -)
 if [ -z "$OTHER" ]; then
@@ -26,7 +33,11 @@ LOGFILE=$1
 shift
 echo "Executing: $@" >$LOGFILE
 paste -d, /sys/class/thermal/thermal_zone?/type >>$LOGFILE
-[ -z "${EVS}" ] && EVS=cycles,instructions,cache-misses,cache-references,task-clock
+PMU=armv7_cortex_${PLATFORM}
+if [ -z "${EVS}" ]; then
+	[[ $0 =~ _big.sh ]] && EVS=cycles,instructions,cache-misses,cache-references,task-clock,${PMU}/br_mis_pred/,${PMU}/br_pred/,${PMU}/inst_spec/
+	[[ $0 =~ _little.sh ]] && EVS=cycles,instructions,cache-misses,cache-references,task-clock,${PMU}/br_mis_pred/,${PMU}/br_pred/
+fi
 
 taskset -c -p ${OTHER} $$
 { coproc fun { exec perf stat -e $EVS -o tmpfile taskset -c ${CORES} "$@"; } >&3; } 3>&1
